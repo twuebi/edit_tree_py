@@ -7,7 +7,7 @@ use std::hash::{Hash, Hasher};
 
 use pyo3::basic::CompareOp;
 
-use edit_tree::{get_graph, Apply};
+use edit_tree::{TreeNode, Apply};
 
 #[pymodule]
 fn edit_tree(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -27,7 +27,7 @@ impl PyEditTree {
     fn __new__(obj: &PyRawObject, a: &PyAny, b: &PyAny) {
         let a = t_from_any::<&str>(a, Some("string")).expect("Couldn't convert arg 1 to string.");
         let b = t_from_any::<&str>(b, Some("string")).expect("Couldn't convert arg 2 to string.");
-        let tree = get_graph(
+        let tree = TreeNode::create_tree(
             &a.chars().collect::<Vec<char>>(),
             &b.chars().collect::<Vec<char>>(),
         );
