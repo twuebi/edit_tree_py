@@ -11,6 +11,7 @@ use pyo3::basic::CompareOp;
 
 use edit_tree::{Apply, EditTree};
 use bincode2::{deserialize, serialize};
+use edit_tree::edit_tree::EditTree::MatchNode;
 
 #[pymodule]
 fn edit_tree(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -19,7 +20,7 @@ fn edit_tree(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
-#[pyclass]
+#[pyclass(module = "edit_tree", name=PyEditTree)]
 #[derive(Clone)]
 #[derive(Serialize, Deserialize)]
 pub struct PyEditTree {
@@ -30,10 +31,18 @@ pub struct PyEditTree {
 impl PyEditTree {
     #[new]
     pub fn __new__(a: &str, b: &str) -> Self {
-        let tree = EditTree::create_tree(
+        let tree = match EditTree::create_tree(
             &a.chars().collect::<Vec<char>>(),
             &b.chars().collect::<Vec<char>>(),
-        );
+        ) {
+            Some(tree) => tree,
+            None => MatchNode {
+                pre: 0,
+                suf: 0,
+                left: None,
+                right: None,
+            }
+        };
         PyEditTree { inner: tree }
     }
 
@@ -69,7 +78,14 @@ impl PyEditTree {
     pub fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
         Ok(PyBytes::new(py, &serialize(&self.inner).unwrap()).to_object(py))
     }
+
+    #[staticmethod]
+    pub fn  __getnewargs__<'a>() -> (&'a str, &'a str) {
+        ("","")
+    }
+
 }
+
 
 #[pyfunction]
 fn deserialize_from_string(string: &str) -> PyResult<PyEditTree> {
