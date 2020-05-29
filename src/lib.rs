@@ -1,13 +1,16 @@
 use pyo3::exceptions;
 use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use pyo3::types::{PyBytes};
 use pyo3::{wrap_pyfunction, PyObjectProtocol};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+use serde::{Deserialize, Serialize};
+
 use pyo3::basic::CompareOp;
 
-use edit_tree::{EditTree, Apply};
+use edit_tree::{Apply, EditTree};
+use bincode2::{deserialize, serialize};
 
 #[pymodule]
 fn edit_tree(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -17,25 +20,24 @@ fn edit_tree(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 
 #[pyclass]
-struct PyEditTree {
+#[derive(Clone)]
+#[derive(Serialize, Deserialize)]
+pub struct PyEditTree {
     inner: edit_tree::EditTree<char>,
 }
 
 #[pymethods]
 impl PyEditTree {
     #[new]
-    fn __new__(obj: &PyRawObject, a: &PyAny, b: &PyAny) {
-        let a = t_from_any::<&str>(a, Some("string")).expect("Couldn't convert arg 1 to string.");
-        let b = t_from_any::<&str>(b, Some("string")).expect("Couldn't convert arg 2 to string.");
+    pub fn __new__(a: &str, b: &str) -> Self {
         let tree = EditTree::create_tree(
             &a.chars().collect::<Vec<char>>(),
             &b.chars().collect::<Vec<char>>(),
         );
-        obj.init(PyEditTree { inner: tree })
+        PyEditTree { inner: tree }
     }
 
-    fn apply(&self, a: &PyAny) -> PyResult<String> {
-        let a = t_from_any::<&str>(a, Some("string"))?;
+    fn apply(&self, a: &str) -> PyResult<String> {
         match self.inner.apply(&a.chars().collect::<Vec<char>>()) {
             Some(lem) => Ok(lem.iter().collect()),
             None => Err(exceptions::Exception::py_err(format!(
@@ -52,6 +54,20 @@ impl PyEditTree {
                 &self.inner
             ))
         })?)
+    }
+
+    pub fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
+        match state.extract::<&PyBytes>(py) {
+            Ok(s) => {
+                self.inner = deserialize(s.as_bytes()).unwrap();
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
+        Ok(PyBytes::new(py, &serialize(&self.inner).unwrap()).to_object(py))
     }
 }
 
@@ -81,12 +97,13 @@ impl PyObjectProtocol for PyEditTree {
         self.serialize_to_string()
     }
 
-    fn __richcmp__(&self, other: &PyAny, op: CompareOp) -> PyResult<bool> {
-        let other = if let Ok(other) = t_from_any::<&PyEditTree>(other, Some("EditTree")) {
-            other
-        } else {
-            return Ok(false);
-        };
+    fn __richcmp__(&self, other: PyRef<'p, Self>, op: CompareOp) -> PyResult<bool> {
+
+//        let other : &PyEditTree = if let Ok(other) = other.extract() {
+//            other
+//        } else {
+//            return Ok(false);
+//        };
         match op {
             CompareOp::Eq => Ok(self.inner.eq(&other.inner)),
             CompareOp::Ne => Ok(self.inner.ne(&other.inner)),
@@ -97,17 +114,8 @@ impl PyObjectProtocol for PyEditTree {
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!("{:?}", self.inner))
     }
-}
 
-pub(crate) fn t_from_any<'a, T>(any: &'a PyAny, to: Option<&str>) -> PyResult<T>
-where
-    T: FromPyObject<'a>,
-{
-    let any_type = any.get_type().name();
-    let msg = to
-        .map(|to| format!("expected '{}' got '{}'", to, any_type))
-        .unwrap_or_else(|| format!("invalid argument: '{}'", any_type));
-    any.extract::<T>().map_err(|_| type_err(msg))
+
 }
 
 pub(crate) fn type_err(msg: impl Into<String>) -> PyErr {
