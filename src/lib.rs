@@ -1,7 +1,7 @@
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes};
-use pyo3::{wrap_pyfunction, PyObjectProtocol};
+use pyo3::PyObjectProtocol;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -16,7 +16,6 @@ use edit_tree::edit_tree::EditTree::MatchNode;
 #[pymodule]
 fn edit_tree(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyEditTree>()?;
-    m.add_wrapped(wrap_pyfunction!(deserialize_from_string))?;
     Ok(())
 }
 
@@ -65,6 +64,19 @@ impl PyEditTree {
         })?)
     }
 
+    #[staticmethod]
+    fn deserialize_from_string(string: &str) -> PyResult<Self> {
+        Ok(PyEditTree {
+            inner: serde_json::from_str(string).map_err(|_| {
+                exceptions::Exception::py_err(format!(
+                    "Failed to deserialize edit tree from: {:?}",
+                    string
+                ))
+            })?,
+        })
+    }
+
+
     pub fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
         match state.extract::<&PyBytes>(py) {
             Ok(s) => {
@@ -87,17 +99,7 @@ impl PyEditTree {
 }
 
 
-#[pyfunction]
-fn deserialize_from_string(string: &str) -> PyResult<PyEditTree> {
-    Ok(PyEditTree {
-        inner: serde_json::from_str(string).map_err(|_| {
-            exceptions::Exception::py_err(format!(
-                "Failed to deserialize edit tree from: {:?}",
-                string
-            ))
-        })?,
-    })
-}
+
 
 #[pyproto]
 impl PyObjectProtocol for PyEditTree {
